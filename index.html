@@ -327,7 +327,6 @@
             selectedBlock = hotbarSlots[index];
         }
 
-        // Função de verificação de colisão otimizada
         function checkCollision(pos) {
             const feetY = pos.y - EYE_HEIGHT;
             const headY = feetY + PLAYER_HEIGHT;
@@ -483,42 +482,60 @@
                 if (moveLeft) moveDir.sub(right);
                 moveDir.normalize();
 
-                // Movimento X
-                if (moveDir.x !== 0) {
-                    camera.position.x += moveDir.x * moveSpeed;
-                    if (checkCollision(camera.position)) {
-                        camera.position.x -= moveDir.x * moveSpeed;
+                // Função auxiliar para tentar mover com subida automática de degraus (Step-Up)
+                function tryMove(deltaX, deltaZ) {
+                    // Tentar mover no Eixo X
+                    if (deltaX !== 0) {
+                        camera.position.x += deltaX;
+                        if (checkCollision(camera.position)) {
+                            // Tentar subir 1 bloco (degrau)
+                            camera.position.y += 1.0;
+                            if (!checkCollision(camera.position)) {
+                                velocityY = 0; // Sucesso ao subir degrau
+                            } else {
+                                camera.position.y -= 1.0;
+                                camera.position.x -= deltaX; // Bloqueado
+                            }
+                        }
+                    }
+
+                    // Tentar mover no Eixo Z
+                    if (deltaZ !== 0) {
+                        camera.position.z += deltaZ;
+                        if (checkCollision(camera.position)) {
+                            // Tentar subir 1 bloco (degrau)
+                            camera.position.y += 1.0;
+                            if (!checkCollision(camera.position)) {
+                                velocityY = 0; // Sucesso ao subir degrau
+                            } else {
+                                camera.position.y -= 1.0;
+                                camera.position.z -= deltaZ; // Bloqueado
+                            }
+                        }
                     }
                 }
 
-                // Movimento Z
-                if (moveDir.z !== 0) {
-                    camera.position.z += moveDir.z * moveSpeed;
-                    if (checkCollision(camera.position)) {
-                        camera.position.z -= moveDir.z * moveSpeed;
-                    }
+                if (moveDir.x !== 0 || moveDir.z !== 0) {
+                    tryMove(moveDir.x * moveSpeed, moveDir.z * moveSpeed);
                 }
 
-                // Gravidade e Colisão Vertical Suave (Sem Tremor)
+                // Gravidade e Colisão Vertical
                 velocityY -= 25.0 * delta;
                 camera.position.y += velocityY * delta;
 
                 if (checkCollision(camera.position)) {
                     if (velocityY < 0) {
-                        // A cair: alinhar perfeitamente ao topo do bloco
                         const feetY = camera.position.y - EYE_HEIGHT;
                         const blockY = Math.floor(feetY);
                         camera.position.y = blockY + 1 + EYE_HEIGHT;
                         canJump = true;
                     } else {
-                        // A saltar e bater no teto
                         const headY = camera.position.y - EYE_HEIGHT + PLAYER_HEIGHT;
                         const blockY = Math.floor(headY);
                         camera.position.y = blockY - PLAYER_HEIGHT + EYE_HEIGHT;
                     }
                     velocityY = 0;
                 } else {
-                    // Verificar se existe chão logo abaixo para permitir saltar
                     let testPos = camera.position.clone();
                     testPos.y -= 0.15;
                     canJump = checkCollision(testPos) && velocityY <= 0;
