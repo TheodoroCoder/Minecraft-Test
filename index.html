@@ -327,8 +327,8 @@
             selectedBlock = hotbarSlots[index];
         }
 
-        // Função de verificação de colisão do jogador com blocos do mundo
-        function checkPlayerCollision(pos) {
+        // Função de verificação de colisão otimizada
+        function checkCollision(pos) {
             const feetY = pos.y - EYE_HEIGHT;
             const headY = feetY + PLAYER_HEIGHT;
 
@@ -379,7 +379,7 @@
                 if (e.code === 'KeyD') moveRight = true;
                 if (e.code === 'Space') {
                     if (canJump) {
-                        velocityY = 8;
+                        velocityY = 8.5;
                         canJump = false;
                     }
                 }
@@ -439,7 +439,6 @@
                             const newY = pos.y + normal.y;
                             const newZ = pos.z + normal.z;
 
-                            // Impedir construir dentro do jogador
                             const playerBox = new THREE.Box3(
                                 new THREE.Vector3(camera.position.x - PLAYER_RADIUS, camera.position.y - EYE_HEIGHT, camera.position.z - PLAYER_RADIUS),
                                 new THREE.Vector3(camera.position.x + PLAYER_RADIUS, camera.position.y - EYE_HEIGHT + PLAYER_HEIGHT, camera.position.z + PLAYER_RADIUS)
@@ -468,7 +467,7 @@
             if (document.pointerLockElement === document.body) {
                 const moveSpeed = 5.0 * delta;
 
-                // Calcular direções no plano horizontal (XZ)
+                // Direções horizontais (XZ)
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                 forward.y = 0;
                 forward.normalize();
@@ -484,45 +483,48 @@
                 if (moveLeft) moveDir.sub(right);
                 moveDir.normalize();
 
-                // Movimento no eixo X com colisão
+                // Movimento X
                 if (moveDir.x !== 0) {
                     camera.position.x += moveDir.x * moveSpeed;
-                    if (checkPlayerCollision(camera.position)) {
+                    if (checkCollision(camera.position)) {
                         camera.position.x -= moveDir.x * moveSpeed;
                     }
                 }
 
-                // Movimento no eixo Z com colisão
+                // Movimento Z
                 if (moveDir.z !== 0) {
                     camera.position.z += moveDir.z * moveSpeed;
-                    if (checkPlayerCollision(camera.position)) {
+                    if (checkCollision(camera.position)) {
                         camera.position.z -= moveDir.z * moveSpeed;
                     }
                 }
 
-                // Gravidade e salto no eixo Y com colisão
+                // Gravidade e Colisão Vertical Suave (Sem Tremor)
                 velocityY -= 25.0 * delta;
                 camera.position.y += velocityY * delta;
 
-                if (checkPlayerCollision(camera.position)) {
+                if (checkCollision(camera.position)) {
                     if (velocityY < 0) {
-                        // A cair: encostar ao topo do bloco
-                        while (checkPlayerCollision(camera.position)) {
-                            camera.position.y += 0.05;
-                        }
+                        // A cair: alinhar perfeitamente ao topo do bloco
+                        const feetY = camera.position.y - EYE_HEIGHT;
+                        const blockY = Math.floor(feetY);
+                        camera.position.y = blockY + 1 + EYE_HEIGHT;
                         canJump = true;
                     } else {
                         // A saltar e bater no teto
-                        while (checkPlayerCollision(camera.position)) {
-                            camera.position.y -= 0.05;
-                        }
+                        const headY = camera.position.y - EYE_HEIGHT + PLAYER_HEIGHT;
+                        const blockY = Math.floor(headY);
+                        camera.position.y = blockY - PLAYER_HEIGHT + EYE_HEIGHT;
                     }
                     velocityY = 0;
                 } else {
-                    canJump = false;
+                    // Verificar se existe chão logo abaixo para permitir saltar
+                    let testPos = camera.position.clone();
+                    testPos.y -= 0.15;
+                    canJump = checkCollision(testPos) && velocityY <= 0;
                 }
 
-                // Segurança caso caia para fora do mapa
+                // Segurança se cair do mundo
                 if (camera.position.y < -5) {
                     camera.position.set(worldSize / 2, worldHeight + 5, worldSize / 2);
                     velocityY = 0;
