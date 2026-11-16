@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft WebGL 3D</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            background-color: #111;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 12px;
+            height: 12px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+        }
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 18px;
+            border-radius: 8px;
+            pointer-events: none;
+            font-size: 14px;
+            line-height: 1.5;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        #ui {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 6px;
+            border-radius: 8px;
+            gap: 6px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .slot {
+            width: 50px;
+            height: 50px;
+            border: 2px solid #555;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 13px;
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.1s ease;
+        }
+        .slot.active {
+            border-color: #fff;
+            transform: scale(1.08);
+            background: rgba(255, 255, 255, 0.15);
+        }
+        .slot span {
+            position: absolute;
+            top: 3px;
+            left: 5px;
+            font-size: 10px;
+            color: #ddd;
+        }
+        #inventory {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(30, 30, 30, 0.95);
+            padding: 25px;
+            border-radius: 12px;
+            border: 2px solid #666;
+            color: white;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .inv-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 55px);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .inv-slot {
+            width: 55px;
+            height: 55px;
+            border: 2px solid #555;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .inv-slot:hover {
+            border-color: #aaa;
+            background: rgba(255,255,255,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="crosshair"></div>
+    <div id="instructions">
+        <b>WASD</b>: Mover | <b>Espaço</b>: Pular<br>
+        <b>Clique Esq</b>: Quebrar | <b>Clique Dir</b>: Construir<br>
+        <b>1-9 / Scroll</b>: Hotbar | <b>E</b>: Inventário<br>
+        <i>Clique na tela para iniciar</i>
+    </div>
+    <div id="ui"></div>
+    <div id="inventory">
+        <h2>Inventário de Blocos</h2>
+        <p>Selecione um bloco para a Hotbar</p>
+        <div class="inv-grid" id="invGrid"></div>
+    </div>
+
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Definição dos tipos de blocos
+        const BLOCK_TYPES = {
+            1: { name: 'Grama', color: 0x559933, sideColor: 0x735135, topColor: 0x559933 },
+            2: { name: 'Terra', color: 0x735135 },
+            3: { name: 'Pedra', color: 0x7f7f7f },
+            4: { name: 'Madeira', color: 0x5a3d28 },
+            5: { name: 'Folhas', color: 0x2e5c1e },
+            6: { name: 'Tábuas', color: 0xa87c4f },
+            7: { name: 'Tijolos', color: 0x9b4733 },
+            8: { name: 'Areia', color: 0xd6c68b },
+            9: { name: 'Vidro', color: 0xdcf0ff, transparent: true }
+        };
+
+        let scene, camera, renderer, clock;
+        let world = {};
+        let selectedBlock = 1;
+        let isInventoryOpen = false;
+        
+        // Configuração de movimento e física
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false, canJump = false;
+        let velocity = new THREE.Vector3();
+        let direction = new THREE.Vector3();
+        let prevTime = performance.now();
+
+        // Variáveis de iluminação e ciclo dia/noite
+        let dirLight, ambientLight;
+        let timeOfDay = 0.3; // 0 a 1
+
+        const worldSize = 32;
+        const worldHeight = 16;
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.015);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(worldSize / 2, worldHeight + 5, worldSize / 2);
+
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Luzes
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(50, 100, 50);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            // Gerar Mundo Procedural (Simplex/Perlin básico iterativo)
+            generateWorld();
+
+            // Criar UI da Hotbar e Inventário
+            setupUI();
+
+            // Controles de Mouse e Teclado
+            setupControls();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // Geração do Terreno
+        function generateWorld() {
+            for (let x = 0; x < worldSize; x++) {
+                for (let z = 0; z < worldSize; z++) {
+                    // Altura base do terreno com ondas senoidais simulando relevo
+                    let height = Math.floor(Math.sin(x * 0.3) * Math.cos(z * 0.3) * 3 + 6);
+                    
+                    for (let y = 0; y <= height; y++) {
+                        let blockId = 3; // Pedra no fundo
+                        if (y === height) blockId = 1; // Grama no topo
+                        else if (y >= height - 2) blockId = 2; // Terra logo abaixo
+
+                        setBlock(x, y, z, blockId);
+                    }
+
+                    // Gerar Árvores esporádicas
+                    if (x > 3 && x < worldSize - 3 && z > 3 && z < worldSize - 3 && Math.random() < 0.03 && height >= 6) {
+                        let treeHeight = 4;
+                        // Tronco
+                        for (let ty = 1; ty <= treeHeight; ty++) {
+                            setBlock(x, height + ty, z, 4);
+                        }
+                        // Folhas
+                        for (let fx = -1; fx <= 1; fx++) {
+                            for (let fz = -1; fz <= 1; fz++) {
+                                for (let fy = 0; fy < 2; fy++) {
+                                    setBlock(x + fx, height + treeHeight + fy, z + fz, 5);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+        const materialsCache = {};
+
+        function getMaterial(blockId) {
+            if (materialsCache[blockId]) return materialsCache[blockId];
+            let data = BLOCK_TYPES[blockId];
+            let mat = new THREE.MeshLambertMaterial({
+                color: data.color,
+                transparent: data.transparent || false,
+                opacity: data.transparent ? 0.6 : 1.0
+            });
+            materialsCache[blockId] = mat;
+            return mat;
+        }
+
+        function setBlock(x, y, z, blockId) {
+            const key = `${x},${y},${z}`;
+            if (blockId === 0) {
+                if (world[key]) {
+                    scene.remove(world[key]);
+                    world[key].geometry.dispose();
+                    delete world[key];
+                }
+            } else {
+                if (world[key]) {
+                    scene.remove(world[key]);
+                    delete world[key];
+                }
+                const mesh = new THREE.Mesh(boxGeo, getMaterial(blockId));
+                mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+                mesh.userData = { x, y, z, blockId };
+                scene.add(mesh);
+                world[key] = mesh;
+            }
+        }
+
+        function getBlock(x, y, z) {
+            const key = `${x},${y},${z}`;
+            return world[key] ? world[key].userData.blockId : 0;
+        }
+
+        // Configuração de Interface (Hotbar & Inventário)
+        const hotbarSlots = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        
+        function setupUI() {
+            const ui = document.getElementById('ui');
+            const invGrid = document.getElementById('invGrid');
+
+            hotbarSlots.forEach((blockId, index) => {
+                const slot = document.createElement('div');
+                slot.className = `slot ${index === 0 ? 'active' : ''}`;
+                slot.innerHTML = `<span>${index + 1}</span>${BLOCK_TYPES[blockId].name.substring(0,3)}`;
+                slot.style.backgroundColor = `#${BLOCK_TYPES[blockId].color.toString(16).padStart(6, '0')}`;
+                slot.onclick = () => selectHotbarSlot(index);
+                ui.appendChild(slot);
+            });
+
+            // Preencher inventário completo
+            Object.keys(BLOCK_TYPES).forEach(id => {
+                const slot = document.createElement('div');
+                slot.className = 'inv-slot';
+                slot.style.backgroundColor = `#${BLOCK_TYPES[id].color.toString(16).padStart(6, '0')}`;
+                slot.title = BLOCK_TYPES[id].name;
+                slot.onclick = () => {
+                    selectedBlock = parseInt(id);
+                    document.getElementById('inventory').style.display = 'none';
+                    document.body.requestPointerLock();
+                };
+                invGrid.appendChild(slot);
+            });
+        }
+
+        function selectHotbarSlot(index) {
+            document.querySelectorAll('.slot').forEach((s, i) => {
+                s.classList.toggle('active', i === index);
+            });
+            selectedBlock = hotbarSlots[index];
+        }
+
+        // Controles e Movimentação FPS
+        let yaw = 0, pitch = 0;
+        const sensitivity = 0.002;
+
+        function setupControls() {
+            document.body.addEventListener('click', () => {
+                if (!isInventoryOpen) {
+                    document.body.requestPointerLock();
+                }
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                if (document.pointerLockElement !== document.body && !isInventoryOpen) {
+                    // Pausado
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (document.pointerLockElement === document.body) {
+                    yaw -= e.movementX * sensitivity;
+                    pitch -= e.movementY * sensitivity;
+                    pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+
+                    let euler = new THREE.Euler(pitch, yaw, 0, 'YXZ');
+                    camera.quaternion.setFromEuler(euler);
+                }
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'KeyW') moveForward = true;
+                if (e.code === 'KeyS') moveBackward = true;
+                if (e.code === 'KeyA') moveLeft = true;
+                if (e.code === 'KeyD') moveRight = true;
+                if (e.code === 'Space') {
+                    if (canJump) {
+                        velocity.y += 8;
+                        canJump = false;
+                    }
+                }
+                if (e.code === 'KeyE') {
+                    isInventoryOpen = !isInventoryOpen;
+                    const invEl = document.getElementById('inventory');
+                    invEl.style.display = isInventoryOpen ? 'block' : 'none';
+                    if (isInventoryOpen) {
+                        document.exitPointerLock();
+                    } else {
+                        document.body.requestPointerLock();
+                    }
+                }
+
+                // Atalhos Numéricos Hotbar (1-9)
+                if (e.key >= '1' && e.key <= '9') {
+                    selectHotbarSlot(parseInt(e.key) - 1);
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                if (e.code === 'KeyW') moveForward = false;
+                if (e.code === 'KeyS') moveBackward = false;
+                if (e.code === 'KeyA') moveLeft = false;
+                if (e.code === 'KeyD') moveRight = false;
+            });
+
+            // Scroll do mouse para trocar slot rápido
+            window.addEventListener('wheel', (e) => {
+                let currentIndex = hotbarSlots.indexOf(selectedBlock);
+                if (e.deltaY > 0) {
+                    currentIndex = (currentIndex + 1) % hotbarSlots.length;
+                } else {
+                    currentIndex = (currentIndex - 1 + hotbarSlots.length) % hotbarSlots.length;
+                }
+                selectHotbarSlot(currentIndex);
+            });
+
+            // Clique do mouse para Quebrar/Construir
+            window.addEventListener('mousedown', (e) => {
+                if (document.pointerLockElement !== document.body || isInventoryOpen) return;
+
+                const raycaster = new THREE.Raycaster();
+                const pointer = new THREE.Vector2(0, 0); // Centro da tela
+                raycaster.setFromCamera(pointer, camera);
+
+                const objects = Object.values(world);
+                const intersects = raycaster.intersectObjects(objects);
+
+                if (intersects.length > 0) {
+                    const intersect = intersects[0];
+                    const pos = intersect.object.userData;
+
+                    if (e.button === 0) { // Clique Esquerdo: Quebrar Bloco
+                        setBlock(pos.x, pos.y, pos.z, 0);
+                    } else if (e.button === 2) { // Clique Direito: Construir Bloco
+                        const normal = intersect.face.normal;
+                        const newX = pos.x + normal.x;
+                        const newY = pos.y + normal.y;
+                        const newZ = pos.z + normal.z;
+
+                        // Evitar construir em cima da câmera/jogador
+                        const playerBox = new THREE.Box3(
+                            new THREE.Vector3(camera.position.x - 0.3, camera.position.y - 1.6, camera.position.z - 0.3),
+                            new THREE.Vector3(camera.position.x + 0.3, camera.position.y, camera.position.z + 0.3)
+                        );
+                        const blockBox = new THREE.Box3(
+                            new THREE.Vector3(newX, newY, newZ),
+                            new THREE.Vector3(newX + 1, newY + 1, newZ + 1)
+                        );
+
+                        if (!playerBox.intersectsBox(blockBox)) {
+                            setBlock(newX, newY, newZ, selectedBlock);
+                        }
+                    }
+                }
+            });
+
+            // Desativar menu de contexto do clique direito
+            document.addEventListener('contextmenu', e => e.preventDefault());
+        }
+
+        // Loop Principal de Atualização e Física
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            // Atualização de Física e Movimentação FPS
+            if (document.pointerLockElement === document.body) {
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+                velocity.y -= 25.0 * delta; // Gravidade
+
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize();
+
+                if (moveForward || moveBackward) velocity.z -= direction.z * 50.0 * delta;
+                if (moveLeft || moveRight) velocity.x -= direction.x * 50.0 * delta;
+
+                camera.translateX(velocity.x * delta);
+                camera.translateZ(velocity.z * delta);
+                camera.position.y += velocity.y * delta;
+
+                // Colisão simples com o chão do mundo
+                if (camera.position.y < 5) {
+                    camera.position.y = 5;
+                    velocity.y = 0;
+                    canJump = true;
+                }
+            }
+
+            // Ciclo de Dia / Noite dinâmico suave
+            timeOfDay += delta * 0.02;
+            if (timeOfDay > 1) timeOfDay = 0;
+
+            let sunAngle = timeOfDay * Math.PI * 2;
+            dirLight.position.x = Math.cos(sunAngle) * 100;
+            dirLight.position.y = Math.sin(sunAngle) * 100;
+
+            let skyIntensity = Math.max(0.2, Math.sin(sunAngle));
+            ambientLight.intensity = skyIntensity * 0.7;
+            dirLight.intensity = skyIntensity;
+
+            // Cor do céu oscilando entre dia e noite
+            let skyColor = new THREE.Color(0x87ceeb).lerp(new THREE.Color(0x0b1026), 1 - skyIntensity);
+            scene.background = skyColor;
+            scene.fog.color = skyColor;
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
