@@ -10,7 +10,12 @@
             overflow: hidden;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             user-select: none;
-            background-color: #111;
+            background-color: #87ceeb;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
         }
         #crosshair {
             position: absolute;
@@ -35,6 +40,7 @@
             font-size: 14px;
             line-height: 1.5;
             border: 1px solid rgba(255,255,255,0.2);
+            z-index: 10;
         }
         #ui {
             position: absolute;
@@ -47,6 +53,7 @@
             border-radius: 8px;
             gap: 6px;
             border: 1px solid rgba(255,255,255,0.15);
+            z-index: 10;
         }
         .slot {
             width: 50px;
@@ -89,6 +96,7 @@
             color: white;
             text-align: center;
             box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            z-index: 100;
         }
         .inv-grid {
             display: grid;
@@ -116,10 +124,10 @@
 <body>
     <div id="crosshair"></div>
     <div id="instructions">
-        <b>WASD</b>: Mover | <b>Espaço</b>: Pular<br>
-        <b>Clique Esq</b>: Quebrar | <b>Clique Dir</b>: Construir<br>
+        <b>WASD</b>: Mover | <b>Espaço</b>: Salto<br>
+        <b>Clique Esq</b>: Destruir | <b>Clique Dir</b>: Construir<br>
         <b>1-9 / Scroll</b>: Hotbar | <b>E</b>: Inventário<br>
-        <i>Clique na tela para iniciar</i>
+        <i>Clique no ecrã para iniciar</i>
     </div>
     <div id="ui"></div>
     <div id="inventory">
@@ -176,10 +184,10 @@
 
             clock = new THREE.Clock();
 
-            ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
             scene.add(ambientLight);
 
-            dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
             dirLight.position.set(50, 100, 50);
             scene.add(dirLight);
 
