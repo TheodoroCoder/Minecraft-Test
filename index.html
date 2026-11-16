@@ -144,9 +144,9 @@
     <div id="crosshair"></div>
     <div id="error-box"></div>
     <div id="instructions">
-        <b>WASD</b>: Mover (A=Esq, D=Dir)<br>
-        <b>Espaço</b>: Salto | <b>E</b>: Inventário<br>
+        <b>WASD</b>: Mover | <b>Espaço</b>: Salto<br>
         <b>Clique Esq</b>: Destruir | <b>Clique Dir</b>: Construir<br>
+        <b>1-9 / Scroll</b>: Hotbar | <b>E</b>: Inventário<br>
         <i>Clique no ecrã para começar a jogar</i>
     </div>
     <div id="ui"></div>
@@ -188,6 +188,11 @@
 
         const worldSize = 32;
         const worldHeight = 16;
+
+        // Dimensões físicas do jogador
+        const PLAYER_RADIUS = 0.3;
+        const PLAYER_HEIGHT = 1.8;
+        const EYE_HEIGHT = 1.6;
 
         try {
             if (typeof THREE === 'undefined') {
@@ -322,6 +327,30 @@
             selectedBlock = hotbarSlots[index];
         }
 
+        // Função de verificação de colisão do jogador com blocos do mundo
+        function checkPlayerCollision(pos) {
+            const feetY = pos.y - EYE_HEIGHT;
+            const headY = feetY + PLAYER_HEIGHT;
+
+            const minX = Math.floor(pos.x - PLAYER_RADIUS);
+            const maxX = Math.floor(pos.x + PLAYER_RADIUS);
+            const minY = Math.floor(feetY);
+            const maxY = Math.floor(headY - 0.001);
+            const minZ = Math.floor(pos.z - PLAYER_RADIUS);
+            const maxZ = Math.floor(pos.z + PLAYER_RADIUS);
+
+            for (let x = minX; x <= maxX; x++) {
+                for (let y = minY; y <= maxY; y++) {
+                    for (let z = minZ; z <= maxZ; z++) {
+                        if (world[`${x},${y},${z}`]) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
         let yaw = 0, pitch = 0;
         const sensitivity = 0.002;
 
@@ -410,9 +439,10 @@
                             const newY = pos.y + normal.y;
                             const newZ = pos.z + normal.z;
 
+                            // Impedir construir dentro do jogador
                             const playerBox = new THREE.Box3(
-                                new THREE.Vector3(camera.position.x - 0.3, camera.position.y - 1.6, camera.position.z - 0.3),
-                                new THREE.Vector3(camera.position.x + 0.3, camera.position.y, camera.position.z + 0.3)
+                                new THREE.Vector3(camera.position.x - PLAYER_RADIUS, camera.position.y - EYE_HEIGHT, camera.position.z - PLAYER_RADIUS),
+                                new THREE.Vector3(camera.position.x + PLAYER_RADIUS, camera.position.y - EYE_HEIGHT + PLAYER_HEIGHT, camera.position.z + PLAYER_RADIUS)
                             );
                             const blockBox = new THREE.Box3(
                                 new THREE.Vector3(newX, newY, newZ),
@@ -436,19 +466,66 @@
             const delta = clock.getDelta();
 
             if (document.pointerLockElement === document.body) {
-                const moveSpeed = 6.0 * delta;
-                if (moveForward) camera.translateZ(-moveSpeed);
-                if (moveBackward) camera.translateZ(moveSpeed);
-                if (moveLeft) camera.translateX(-moveSpeed);
-                if (moveRight) camera.translateX(moveSpeed);
+                const moveSpeed = 5.0 * delta;
 
+                // Calcular direções no plano horizontal (XZ)
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                forward.y = 0;
+                forward.normalize();
+
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                right.y = 0;
+                right.normalize();
+
+                let moveDir = new THREE.Vector3();
+                if (moveForward) moveDir.add(forward);
+                if (moveBackward) moveDir.sub(forward);
+                if (moveRight) moveDir.add(right);
+                if (moveLeft) moveDir.sub(right);
+                moveDir.normalize();
+
+                // Movimento no eixo X com colisão
+                if (moveDir.x !== 0) {
+                    camera.position.x += moveDir.x * moveSpeed;
+                    if (checkPlayerCollision(camera.position)) {
+                        camera.position.x -= moveDir.x * moveSpeed;
+                    }
+                }
+
+                // Movimento no eixo Z com colisão
+                if (moveDir.z !== 0) {
+                    camera.position.z += moveDir.z * moveSpeed;
+                    if (checkPlayerCollision(camera.position)) {
+                        camera.position.z -= moveDir.z * moveSpeed;
+                    }
+                }
+
+                // Gravidade e salto no eixo Y com colisão
                 velocityY -= 25.0 * delta;
                 camera.position.y += velocityY * delta;
 
-                if (camera.position.y < 5) {
-                    camera.position.y = 5;
+                if (checkPlayerCollision(camera.position)) {
+                    if (velocityY < 0) {
+                        // A cair: encostar ao topo do bloco
+                        while (checkPlayerCollision(camera.position)) {
+                            camera.position.y += 0.05;
+                        }
+                        canJump = true;
+                    } else {
+                        // A saltar e bater no teto
+                        while (checkPlayerCollision(camera.position)) {
+                            camera.position.y -= 0.05;
+                        }
+                    }
                     velocityY = 0;
-                    canJump = true;
+                } else {
+                    canJump = false;
+                }
+
+                // Segurança caso caia para fora do mapa
+                if (camera.position.y < -5) {
+                    camera.position.set(worldSize / 2, worldHeight + 5, worldSize / 2);
+                    velocityY = 0;
                 }
             }
 
