@@ -159,6 +159,10 @@
     <!-- Three.js CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
+        // Definição antecipada de geometrias e caches globais
+        const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+        const materialsCache = {};
+
         const BLOCK_TYPES = {
             1: { name: 'Grama', color: 0x559933 },
             2: { name: 'Terra', color: 0x735135 },
@@ -195,7 +199,7 @@
         } catch (err) {
             const errBox = document.getElementById('error-box');
             errBox.style.display = 'block';
-            errBox.innerHTML = `<h3>Erro ao Iniciar o Jogo</h3><p>${err.message}</p><p><small>Dica: Certifique-se de que tem ligação à internet para carregar o motor gráfico.</small></p>`;
+            errBox.innerHTML = `<h3>Erro ao Iniciar o Jogo</h3><p>${err.message}</p>`;
             console.error(err);
         }
 
@@ -257,9 +261,6 @@
                 }
             }
         }
-
-        const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-        const materialsCache = {};
 
         function getMaterial(blockId) {
             if (materialsCache[blockId]) return materialsCache[blockId];
