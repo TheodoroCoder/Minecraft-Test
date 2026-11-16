@@ -14,8 +14,12 @@
         }
         canvas {
             display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100vw;
             height: 100vh;
+            z-index: 0;
         }
         #crosshair {
             position: absolute;
@@ -27,6 +31,7 @@
             pointer-events: none;
             border: 2px solid rgba(255, 255, 255, 0.8);
             border-radius: 50%;
+            z-index: 10;
         }
         #instructions {
             position: absolute;
@@ -119,10 +124,25 @@
             border-color: #aaa;
             background: rgba(255,255,255,0.1);
         }
+        #error-box {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(180, 20, 20, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            text-align: center;
+            max-width: 400px;
+        }
     </style>
 </head>
 <body>
     <div id="crosshair"></div>
+    <div id="error-box"></div>
     <div id="instructions">
         <b>WASD</b>: Mover | <b>Espaço</b>: Salto<br>
         <b>Clique Esq</b>: Destruir | <b>Clique Dir</b>: Construir<br>
@@ -166,8 +186,18 @@
         const worldSize = 32;
         const worldHeight = 16;
 
-        init();
-        animate();
+        try {
+            if (typeof THREE === 'undefined') {
+                throw new Error("A biblioteca Three.js não conseguiu carregar. Verifique a sua ligação à internet.");
+            }
+            init();
+            animate();
+        } catch (err) {
+            const errBox = document.getElementById('error-box');
+            errBox.style.display = 'block';
+            errBox.innerHTML = `<h3>Erro ao Iniciar o Jogo</h3><p>${err.message}</p><p><small>Dica: Certifique-se de que tem ligação à internet para carregar o motor gráfico.</small></p>`;
+            console.error(err);
+        }
 
         function init() {
             scene = new THREE.Scene();
